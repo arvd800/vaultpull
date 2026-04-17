@@ -1,0 +1,18 @@
+# .vaultpull.yaml — place in your project root or $HOME
+
+# Address of your Vault server.
+# Overridden by VAULT_ADDR environment variable.
+vault_addr: "http://127.0.0.1:8200"
+
+# Vault token used for authentication.
+# Prefer setting VAULT_TOKEN in your environment instead of storing here.
+# vault_token: "s.XXXXXXXXXXXX"
+
+# KV v2 path to the secret (e.g. secret/data/<path>).
+secret_path: "secret/data/myapp/production"
+
+# Destination .env file to write secrets into.
+output_file: ".env"
+
+# Optional: Vault namespace (Vault Enterprise only).
+# namespace: "my-org/my-team"
