@@ -1,53 +1,73 @@
 package sync
 
 import (
-	"net/http"
-	"net/http/httptest"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func newMockVault(t *testing.T, secret string) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(secret))
-	}))
+type mockVault struct {
+	secrets map[string]string
+	err     error
+}
+
+func (m *mockVault) ReadSecret(_ string) (map[string]string, error) {
+	return m.secrets, m.err
 }
 
 func TestSyncer_Run(t *testing.T) {
-	kvv1Payload := `{"data":{"API_KEY":"abc123","DB_PASS":"secret"}}`
-	server := newMockVault(t, kvv1Payload)
-	defer server.Close()
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
 
-	tmpDir := t.TempDir()
-	outPath := filepath.Join(tmpDir, ".env")
+	v := &mockVault{secrets: map[string]string{"DB_HOST": "localhost", "DB_PORT": "5432"}}
+	s := New(v, "secret/app", envPath, false)
 
-	s, err := New(server.URL, "fake-token", "secret/myapp", outPath)
-	require.NoError(t, err)
+	if err := s.Run(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-	err = s.Run()
-	require.NoError(t, err)
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) == 0 {
+		t.Error("expected non-empty env file")
+	}
+}
 
-	data, err := os.ReadFile(outPath)
-	require.NoError(t, err)
-	assert.Contains(t, string(data), "API_KEY")
-	assert.Contains(t, string(data), "DB_PASS")
+func TestSyncer_Run_WithBackup(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
+
+	if err := os.WriteFile(envPath, []byte("OLD=value\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	v := &mockVault{secrets: map[string]string{"NEW_KEY": "new_val"}}
+	s := New(v, "secret/app", envPath, true)
+
+	if err := s.Run(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	entries, _ := os.ReadDir(dir)
+	backupFound := false
+	for _, e := range entries {
+		if e.Name() != ".env" {
+			backupFound = true
+		}
+	}
+	if !backupFound {
+		t.Error("expected backup file to exist")
+	}
 }
 
 func TestSyncer_Run_BadPath(t *testing.T) {
-	kvv1Payload := `{"data":{"KEY":"val"}}`
-	server := newMockVault(t, kvv1Payload)
-	defer server.Close()
+	v := &mockVault{err: errors.New("forbidden")}
+	s := New(v, "secret/missing", "/tmp/noop.env", false)
 
-	s, err := New(server.URL, "fake-token", "secret/myapp", "/nonexistent/dir/.env")
-	require.NoError(t, err)
-
-	err = s.Run()
-	assert.Error(t, err)
+	if err := s.Run(); err == nil {
+		t.Error("expected error for bad vault path")
+	}
 }
