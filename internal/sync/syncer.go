@@ -1,57 +1,80 @@
 package sync
 
 import (
+	"context"
 	"fmt"
+	"log"
 
 	"github.com/user/vaultpull/internal/envfile"
+	"github.com/user/vaultpull/internal/vault"
 )
 
-// VaultReader reads secrets from Vault.
-type VaultReader interface {
-	ReadSecret(path string) (map[string]string, error)
-}
-
-// Syncer orchestrates pulling secrets and writing the env file.
+// Syncer orchestrates reading secrets from Vault and writing them to a .env file.
 type Syncer struct {
-	vault      VaultReader
+	client     *vault.Client
 	secretPath string
 	envPath    string
 	backup     bool
 }
 
-// New creates a Syncer.
-func New(v VaultReader, secretPath, envPath string, backup bool) *Syncer {
-	return &Syncer{vault: v, secretPath: secretPath, envPath: envPath, backup: backup}
+// New creates a new Syncer.
+func New(client *vault.Client, secretPath, envPath string, backup bool) *Syncer {
+	return &Syncer{
+		client:     client,
+		secretPath: secretPath,
+		envPath:    envPath,
+		backup:     backup,
+	}
 }
 
-// Run pulls secrets and writes/merges the env file.
-// If backup is enabled it creates a backup before writing.
-func (s *Syncer) Run() error {
-	secrets, err := s.vault.ReadSecret(s.secretPath)
+// Run fetches secrets and writes them to the env file, optionally showing a diff.
+func (s *Syncer) Run(ctx context.Context) error {
+	secrets, err := vault.ReadSecretAuto(ctx, s.client, s.secretPath)
 	if err != nil {
-		return fmt.Errorf("read secret %s: %w", s.secretPath, err)
+		return fmt.Errorf("reading secret: %w", err)
 	}
+
+	existing, err := envfile.Read(s.envPath)
+	if err != nil {
+		existing = map[string]string{}
+	}
+
+	diff := envfile.Diff(existing, secrets)
+	if !diff.HasChanges() {
+		log.Println("vaultpull: no changes detected")
+		return nil
+	}
+
+	logDiff(diff)
 
 	var backupPath string
 	if s.backup {
 		backupPath, err = envfile.Backup(s.envPath)
 		if err != nil {
-			return fmt.Errorf("backup %s: %w", s.envPath, err)
+			return fmt.Errorf("creating backup: %w", err)
 		}
 	}
 
-	existing, err := envfile.Read(s.envPath)
-	if err != nil {
-		_ = envfile.RemoveBackup(backupPath)
-		return fmt.Errorf("read env file: %w", err)
+	merged := envfile.Merge(existing, secrets)
+	if err := envfile.Write(s.envPath, merged); err != nil {
+		return fmt.Errorf("writing env file: %w", err)
 	}
 
-	merged := envfile.Merge(existing, secrets)
-
-	if err := envfile.Write(s.envPath, merged); err != nil {
+	if backupPath != "" {
 		_ = envfile.RemoveBackup(backupPath)
-		return fmt.Errorf("write env file: %w", err)
 	}
 
 	return nil
+}
+
+func logDiff(d envfile.DiffResult) {
+	for k := range d.Added {
+		log.Printf("  + %s", k)
+	}
+	for k := range d.Changed {
+		log.Printf("  ~ %s", k)
+	}
+	for k := range d.Removed {
+		log.Printf("  - %s", k)
+	}
 }
