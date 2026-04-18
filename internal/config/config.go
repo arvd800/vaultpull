@@ -17,6 +17,11 @@ type Config struct {
 }
 
 // Load reads configuration from file and environment variables.
+// Configuration is resolved in the following order (highest to lowest precedence):
+//  1. VAULTPULL_* environment variables
+//  2. Config file (.vaultpull.yaml)
+//  3. Native Vault environment variables (VAULT_ADDR, VAULT_TOKEN)
+//  4. Built-in defaults
 func Load(cfgFile string) (*Config, error) {
 	v := viper.New()
 
@@ -62,6 +67,7 @@ func Load(cfgFile string) (*Config, error) {
 	return &cfg, nil
 }
 
+// validate ensures all required configuration fields are populated.
 func (c *Config) validate() error {
 	if c.VaultAddr == "" {
 		return errors.New("vault_addr is required")
