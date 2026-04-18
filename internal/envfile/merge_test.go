@@ -60,3 +60,14 @@ func TestMerge_DoesNotMutateInputs(t *testing.T) {
 		t.Errorf("Merge mutated existing map")
 	}
 }
+
+func TestMerge_BothEmpty(t *testing.T) {
+	existing := map[string]string{}
+	incoming := map[string]string{}
+
+	result := Merge(existing, incoming)
+
+	if len(result) != 0 {
+		t.Errorf("expected empty result, got %d keys", len(result))
+	}
+}
