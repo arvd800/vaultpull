@@ -1,80 +1,89 @@
 package sync
 
 import (
-	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/user/vaultpull/internal/envfile"
 	"github.com/user/vaultpull/internal/vault"
 )
 
-// Syncer orchestrates reading secrets from Vault and writing them to a .env file.
+// Options configures Syncer behaviour.
+type Options struct {
+	OutputFile  string
+	Backup      bool
+	Passphrase  string
+	StripPrefix string
+	Include     []string
+	Exclude     []string
+	TTL         time.Duration
+	TTLFile     string
+}
+
+// Syncer orchestrates pulling secrets from Vault and writing them locally.
 type Syncer struct {
-	client     *vault.Client
-	secretPath string
-	envPath    string
-	backup     bool
+	client *vault.Client
+	opts   Options
 }
 
-// New creates a new Syncer.
-func New(client *vault.Client, secretPath, envPath string, backup bool) *Syncer {
-	return &Syncer{
-		client:     client,
-		secretPath: secretPath,
-		envPath:    envPath,
-		backup:     backup,
-	}
+// New creates a Syncer.
+func New(client *vault.Client, opts Options) *Syncer {
+	return &Syncer{client: client, opts: opts}
 }
 
-// Run fetches secrets and writes them to the env file, optionally showing a diff.
-func (s *Syncer) Run(ctx context.Context) error {
-	secrets, err := vault.ReadSecretAuto(ctx, s.client, s.secretPath)
+// Run pulls secrets from path and writes them to the output file.
+func (s *Syncer) Run(secretPath string) error {
+	secrets, err := vault.ReadSecretAuto(s.client, secretPath)
 	if err != nil {
-		return fmt.Errorf("reading secret: %w", err)
+		return fmt.Errorf("read secret: %w", err)
 	}
 
-	existing, err := envfile.Read(s.envPath)
-	if err != nil {
-		existing = map[string]string{}
+	if len(s.opts.Include) > 0 || s.opts.StripPrefix != "" || len(s.opts.Exclude) > 0 {
+		secrets = envfile.Filter(secrets, envfile.FilterOptions{
+			IncludePrefixes: s.opts.Include,
+			ExcludeKeys:     s.opts.Exclude,
+			StripPrefix:     s.opts.StripPrefix,
+		})
 	}
 
-	diff := envfile.Diff(existing, secrets)
-	if !diff.HasChanges() {
-		log.Println("vaultpull: no changes detected")
-		return nil
+	if err := envfile.Validate(secrets); err != nil {
+		return fmt.Errorf("validate secrets: %w", err)
 	}
 
+	existing, _ := envfile.Read(s.opts.OutputFile)
+	merged := envfile.Merge(existing, secrets)
+
+	diff := envfile.Diff(existing, merged)
 	logDiff(diff)
 
-	var backupPath string
-	if s.backup {
-		backupPath, err = envfile.Backup(s.envPath)
-		if err != nil {
-			return fmt.Errorf("creating backup: %w", err)
+	if s.opts.Backup {
+		if bp, err := envfile.Backup(s.opts.OutputFile); err == nil {
+			log.Printf("backup created: %s", bp)
 		}
 	}
 
-	merged := envfile.Merge(existing, secrets)
-	if err := envfile.Write(s.envPath, merged); err != nil {
-		return fmt.Errorf("writing env file: %w", err)
+	if s.opts.Passphrase != "" {
+		if err := envfile.WriteEncryptedFile(s.opts.OutputFile, merged, s.opts.Passphrase); err != nil {
+			return fmt.Errorf("write encrypted: %w", err)
+		}
+	} else {
+		if err := envfile.Write(s.opts.OutputFile, merged); err != nil {
+			return fmt.Errorf("write env: %w", err)
+		}
 	}
 
-	if backupPath != "" {
-		_ = envfile.RemoveBackup(backupPath)
+	if s.opts.TTL > 0 && s.opts.TTLFile != "" {
+		if err := envfile.SaveTTL(s.opts.TTLFile, s.opts.TTL); err != nil {
+			log.Printf("warn: could not save TTL record: %v", err)
+		}
 	}
 
 	return nil
 }
 
-func logDiff(d envfile.DiffResult) {
-	for k := range d.Added {
-		log.Printf("  + %s", k)
-	}
-	for k := range d.Changed {
-		log.Printf("  ~ %s", k)
-	}
-	for k := range d.Removed {
-		log.Printf("  - %s", k)
+func logDiff(diff []envfile.DiffEntry) {
+	for _, d := range diff {
+		log.Printf("[%s] %s", d.Action, d.Key)
 	}
 }
