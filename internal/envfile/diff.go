@@ -38,3 +38,13 @@ func Diff(existing, incoming map[string]string) DiffResult {
 func (d DiffResult) HasChanges() bool {
 	return len(d.Added) > 0 || len(d.Removed) > 0 || len(d.Changed) > 0
 }
+
+// Summary returns a brief human-readable string describing the number of
+// additions, removals, and changes in the DiffResult.
+func (d DiffResult) Summary() string {
+	if !d.HasChanges() {
+		return "no changes"
+	}
+	return fmt.Sprintf("%d added, %d removed, %d changed",
+		len(d.Added), len(d.Removed), len(d.Changed))
+}
