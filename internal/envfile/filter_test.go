@@ -44,7 +44,7 @@ func TestFilter_StripPrefix(t *testing.T) {
 
 func TestFilter_StripPrefix_ExactMatch_Skipped(t *testing.T) {
 	input := map[string]string{
-		"APP_": "empty",
+		"APP_":  "empty",
 		"APP_X": "x",
 	}
 	got := Filter(input, FilterOptions{IncludePrefix: "APP_", StripPrefix: true})
@@ -62,4 +62,9 @@ func TestFilter_EmptyOptions(t *testing.T) {
 	input := map[string]string{"A": "1", "B": "2"}
 	got := Filter(input, FilterOptions{})
 	assert.Equal(t, input, got)
+}
+
+func TestFilter_EmptyInput(t *testing.T) {
+	got := Filter(map[string]string{}, FilterOptions{IncludePrefix: "APP_", ExcludeKeys: []string{"X"}})
+	assert.Equal(t, map[string]string{}, got)
 }
