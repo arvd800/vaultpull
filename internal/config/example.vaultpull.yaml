@@ -1,18 +1,25 @@
-# .vaultpull.yaml — place in your project root or $HOME
+# vaultpull configuration example
+# Copy to vaultpull.yaml and adjust values.
 
-# Address of your Vault server.
-# Overridden by VAULT_ADDR environment variable.
-vault_addr: "http://127.0.0.1:8200"
+vault_addr: "https://vault.example.com"
+vault_token: ""           # or set VAULT_TOKEN env var
+secret_path: "secret/myapp/prod"
+env_file: ".env"
 
-# Vault token used for authentication.
-# Prefer setting VAULT_TOKEN in your environment instead of storing here.
-# vault_token: "s.XXXXXXXXXXXX"
+# Optional: KV engine version (1 or 2). Default: auto-detect.
+# kv_version: 2
 
-# KV v2 path to the secret (e.g. secret/data/<path>).
-secret_path: "secret/data/myapp/production"
+# Optional: write backup before overwriting .env
+backup: true
 
-# Destination .env file to write secrets into.
-output_file: ".env"
+# Optional: template to render instead of plain key=value output
+# template_path: ".env.tmpl"
 
-# Optional: Vault namespace (Vault Enterprise only).
-# namespace: "my-org/my-team"
+# Optional: only include keys with this prefix (prefix stripped from output)
+# filter_prefix: "MYAPP_"
+
+# Optional: passphrase to encrypt the written .env file at rest
+# encrypt_passphrase: ""
+
+# Optional: TTL for cached secrets (e.g. "1h", "30m")
+# ttl: "1h"
