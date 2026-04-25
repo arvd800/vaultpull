@@ -70,6 +70,19 @@ func TestResolve_FallbackToEnv(t *testing.T) {
 	}
 }
 
+func TestResolve_FallbackToEnv_NotFound(t *testing.T) {
+	// Ensure the variable is not set in the environment.
+	t.Setenv("UNDEFINED_VAR_XYZ", "")
+	os.Unsetenv("UNDEFINED_VAR_XYZ")
+	secrets := map[string]string{
+		"VAL": "${UNDEFINED_VAR_XYZ}/suffix",
+	}
+	_, err := Resolve(secrets, ResolveOptions{FallbackToEnv: true})
+	if err == nil {
+		t.Fatal("expected error when env var is also missing, got nil")
+	}
+}
+
 func TestResolve_DoesNotMutateInput(t *testing.T) {
 	secrets := map[string]string{
 		"A": "hello",
