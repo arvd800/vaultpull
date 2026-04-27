@@ -51,6 +51,24 @@ func TestSaveAndLoadSnapshot_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestSaveAndLoadSnapshot_TimestampPreserved(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "snap.json")
+
+	origSnap := TakeSnapshot("vault/secret/app", map[string]string{"KEY": "val"})
+	if err := SaveSnapshot(path, origSnap); err != nil {
+		t.Fatalf("SaveSnapshot error: %v", err)
+	}
+
+	loaded, err := LoadSnapshot(path)
+	if err != nil {
+		t.Fatalf("LoadSnapshot error: %v", err)
+	}
+	if !loaded.Timestamp.Equal(origSnap.Timestamp) {
+		t.Errorf("timestamp mismatch: got %v want %v", loaded.Timestamp, origSnap.Timestamp)
+	}
+}
+
 func TestSaveSnapshot_FilePermissions(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "snap.json")
