@@ -80,6 +80,16 @@ func TestApplyScope_UnknownScope(t *testing.T) {
 	}
 }
 
+func TestApplyScope_EmptyScopeName(t *testing.T) {
+	scopes := envfile.ScopeMap{
+		"prod": {Name: "prod", Keys: []string{"DB_URL"}},
+	}
+	_, err := envfile.ApplyScope(map[string]string{"DB_URL": "val"}, scopes, "")
+	if err == nil {
+		t.Error("expected error for empty scope name")
+	}
+}
+
 func TestSaveScopes_FilePermissions(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "scopes.json")
